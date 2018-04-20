@@ -4,7 +4,9 @@
 #
 # This script will install and configure Nginx,PHP7.2, MySQL 5.7 on
 # a CentOS 7 droplet
-# 
+#
+# Disable SELinux
+setenforce 0
 # Update CentOS
 yum -y update;
 
@@ -66,79 +68,48 @@ PUBLIC_IP=$(curl -s http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/
 # Enable PHP Support
 cat << EOF > /etc/nginx/conf.d/default.conf
 server {
-		listen       $PUBLIC_IP:80;
-        root /usr/share/nginx/html;
-        #root /usr/share/nginx/html/laravel-meetup-abuja/public;
+    listen $PUBLIC_IP:80;
+    #server_name maomuffy.com;
+    root /usr/share/nginx/laravel_app/public;
 
-        # Add index.php to the list if you are using PHP
-        index index.php index.html;
+    add_header X-Frame-Options "SAMEORIGIN";
+    add_header X-XSS-Protection "1; mode=block";
+    add_header X-Content-Type-Options "nosniff";
 
-        #server_name _;
-        charset   utf-8;
-        gzip on;
-        gzip_vary on;
-        gzip_disable "msie6";
-        gzip_comp_level 6;
-        gzip_min_length 1100;
-        gzip_buffers 16 8k;
-        gzip_proxied any;
-        gzip_types
-            text/plain
-            text/css
-            text/js
-            text/xml
-            text/javascript
-            application/javascript
-            application/x-javascript
-            application/json
-            application/xml
-            application/xml+rss;
+    index index.php index.html index.htm;
 
-        location / {
-                # First attempt to serve request as file, then
-                # as directory, then fall back to displaying a 404.
-                try_files \$uri \$uri/ =404;
-        #try_files \$uri \$uri/ /index.php?\$query_string;
-        }
+    charset utf-8;
 
-        location ~ \.php$ {
-                fastcgi_pass unix:/run/php/php7.2-fpm.sock;
-                fastcgi_index index.php;
-                fastcgi_param PATH_INFO \$fastcgi_script_name;
-                include fastcgi_params;
-        }
+    location / {
+        try_files \$uri \$uri/ /index.php?\$query_string;
+    }
 
-        # deny access to .htaccess files, if Apaches document root
-        # concurs with nginxs one
-        #
+    location = /favicon.ico { access_log off; log_not_found off; }
+    location = /robots.txt  { access_log off; log_not_found off; }
 
-        location ~* \.(?:jpg|jpeg|gif|png|ico|cur|gz|svg|svgz|mp4|ogg|ogv|webm|htc|svg|woff|woff2|ttf)\$ {
-          expires 1M;
-          access_log off;
-          add_header Cache-Control "public";
-        }
+    error_page 404 /index.php;
 
-        location ~* \.(?:css|js)\$ {
-          expires 7d;
-          access_log off;
-          add_header Cache-Control "public";
-        }
+    location ~ \.php$ {
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;
+        fastcgi_pass unix:/run/php/php7.2-fpm.sock;
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+    }
 
-        location ~ /\.ht {
-                deny all;
-        }
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
 }
 EOF
-
-# Default index.php with phpinfo()
-echo "<?php phpinfo(); ?>" > /usr/share/nginx/html/index.php
 
 # Restart Nginx Server
 systemctl restart nginx.service;
 
 # Setup PHP PATH
-echo "export PATH=$PATH:/opt/remi/php72/root/bin" >> ~/.bashrc
-source ~/.bashrc
+`echo "export PATH=\$PATH:/opt/remi/php72/root/bin" >> ~/.bashrc`
+`export PATH=$PATH:/opt/remi/php72/root/bin`
+.  ~/.bashrc
 
 # Install Composer
 php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
@@ -146,6 +117,12 @@ php -r "if (hash_file('SHA384', 'composer-setup.php') === '544e09ee996cdf60ece38
 php composer-setup.php --install-dir=/usr/local/bin --filename=composer
 php -r "unlink('composer-setup.php');"
 
+# Install Laravel
+composer create-project --prefer-dist laravel/laravel /usr/share/nginx/laravel_app
 
+chmod -R 777 /usr/share/nginx/laravel_app/storage
 
-
+# Laravel Installation Complete
+echo
+echo "Server Provisioned Successfully at http://$PUBLIC_IP"
+echo "Now go make an AWESOME Laravel Application!"
